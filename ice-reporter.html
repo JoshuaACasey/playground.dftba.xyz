@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ICE Activity Community Report</title>
+    <title>ICE Activity Anonymous Community Report</title>
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Inter font -->
@@ -18,7 +18,7 @@
 
     <div class="w-full max-w-2xl bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 sm:p-8">
         <h1 class="text-3xl sm:text-4xl font-bold text-center mb-6 text-indigo-700 dark:text-indigo-400">
-            ICE Activity Community Report
+            ICE Activity Anonymous Community Report
         </h1>
 
         <div id="message-container" class="hidden bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 p-3 rounded-md mb-4 text-center">
@@ -81,6 +81,48 @@
         import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, collection, addDoc, query, orderBy, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
+        // --- PLACEHOLDER FOR FIREBASE CONFIGURATION ---
+        // If you are hosting this HTML file directly (e.g., on GitHub Pages)
+        // and not within a Canvas environment that injects these variables,
+        // you would uncomment and populate these lines with your actual Firebase project details.
+        /*
+        const __firebase_config = JSON.stringify({
+          apiKey: "YOUR_FIREBASE_API_KEY",
+          authDomain: "YOUR_FIREBASE_AUTH_DOMAIN",
+          projectId: "YOUR_FIREBASE_PROJECT_ID",
+          storageBucket: "YOUR_FIREBASE_STORAGE_BUCKET",
+          messagingSenderId: "YOUR_FIREBASE_MESSAGING_SENDER_ID",
+          appId: "YOUR_FIREBASE_APP_ID",
+          // measurementId: "YOUR_FIREBASE_MEASUREMENT_ID" // Uncomment if you enabled Google Analytics
+        });
+
+        // If you are not using a custom auth token from an environment,
+        // you can define it as null or simply rely on signInAnonymously.
+        const __initial_auth_token = null; // Or your custom token string if applicable
+
+        // You might also need to define __app_id if you want a specific app ID for Firestore path:
+        const __app_id = 'your-custom-app-id'; // Or 'default-app-id'
+        */
+        // --- END OF PLACEHOLDER ---
+
+        // Import the functions you need from the SDKs you need
+import { initializeApp } from "firebase/app";
+// TODO: Add SDKs for Firebase products that you want to use
+// https://firebase.google.com/docs/web/setup#available-libraries
+
+// Your web app's Firebase configuration
+const firebaseConfig = {
+  apiKey: "AIzaSyBUYHPUT-XxhnqXs9Z52_JqmPhQKmca6es",
+  authDomain: "icereporterapp.firebaseapp.com",
+  projectId: "icereporterapp",
+  storageBucket: "icereporterapp.firebasestorage.app",
+  messagingSenderId: "866258353072",
+  appId: "1:866258353072:web:84dc10c42899a9c7273475"
+};
+
+// Initialize Firebase
+const app = initializeApp(firebaseConfig);
+
         // Global variables for Firebase instances
         let db;
         let auth;
@@ -126,7 +168,18 @@
          */
         async function initializeFirebase() {
             try {
+                // The __firebase_config variable is expected to be defined by the hosting environment.
+                // If not, it will default to an empty object, causing initializeApp to fail.
+                // For direct HTML file hosting, uncomment and populate the placeholder above.
                 const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+
+                // Ensure firebaseConfig is not empty before initializing app
+                if (Object.keys(firebaseConfig).length === 0) {
+                    console.error("Firebase configuration is missing. Please provide it for external hosting.");
+                    displayMessage("Firebase configuration missing. App cannot initialize.", 'error');
+                    return;
+                }
+
                 const app = initializeApp(firebaseConfig);
                 db = getFirestore(app);
                 auth = getAuth(app);
@@ -139,7 +192,9 @@
                     } else {
                         // Sign in anonymously if no user is authenticated
                         try {
-                            if (typeof __initial_auth_token !== 'undefined') {
+                            // The __initial_auth_token variable is expected from the hosting environment.
+                            // If not defined, signInAnonymously will be used.
+                            if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token !== null) {
                                 await signInWithCustomToken(auth, __initial_auth_token);
                             } else {
                                 await signInAnonymously(auth);
@@ -169,6 +224,8 @@
                 return;
             }
 
+            // The __app_id variable is expected from the hosting environment.
+            // If not defined, it defaults to 'default-app-id'.
             const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
             const reportsCollectionRef = collection(db, `artifacts/${appId}/public/data/reports`);
             const q = query(reportsCollectionRef, orderBy('timestamp', 'desc'));
@@ -179,7 +236,11 @@
                     noReportsMessage.textContent = "No reports yet. Be the first to submit one!";
                     reportsList.appendChild(noReportsMessage);
                 } else {
-                    noReportsMessage.remove(); // Remove the "no reports" message if reports exist
+                    // Ensure no-reports-message is removed if it exists and reports are present
+                    const existingNoReportsMessage = document.getElementById('no-reports-message');
+                    if (existingNoReportsMessage) {
+                        existingNoReportsMessage.remove();
+                    }
                     snapshot.docs.forEach(doc => {
                         const report = doc.data();
                         const reportElement = document.createElement('div');
