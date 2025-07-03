@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Anonymous Community Report</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Inter font -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+    </style>
+</head>
+<body class="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-gray-800 dark:to-gray-950 text-gray-900 dark:text-gray-100 p-4 sm:p-6 flex flex-col items-center">
+
+    <div class="w-full max-w-2xl bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 sm:p-8">
+        <h1 class="text-3xl sm:text-4xl font-bold text-center mb-6 text-indigo-700 dark:text-indigo-400">
+            ICE Activity Community Report
+        </h1>
+
+        <div id="message-container" class="hidden bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 p-3 rounded-md mb-4 text-center">
+            <!-- Messages will be displayed here -->
+        </div>
+
+        <form id="report-form" class="space-y-4">
+            <div>
+                <label for="reportText" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Report Description:
+                </label>
+                <textarea
+                    id="reportText"
+                    class="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg shadow-sm focus:ring-indigo-500 focus:border-indigo-500 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-gray-100 resize-y"
+                    rows="4"
+                    placeholder="Describe the activity you observed..."
+                    required
+                ></textarea>
+            </div>
+            <div>
+                <label for="locationText" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Location (Optional):
+                </label>
+                <input
+                    type="text"
+                    id="locationText"
+                    class="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg shadow-sm focus:ring-indigo-500 focus:border-indigo-500 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+                    placeholder="e.g., Main St & Oak Ave, near library"
+                />
+            </div>
+            <button
+                type="submit"
+                id="submit-button"
+                class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 px-4 rounded-lg shadow-md transition duration-300 ease-in-out transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800"
+            >
+                Submit Anonymous Report
+            </button>
+        </form>
+
+        <div class="mt-8">
+            <h2 class="text-2xl font-bold mb-4 text-center text-indigo-700 dark:text-indigo-400">Recent Anonymous Reports</h2>
+            <div id="reports-list" class="space-y-4">
+                <!-- Reports will be dynamically loaded here -->
+                <p id="no-reports-message" class="text-center text-gray-600 dark:text-gray-400">Loading reports...</p>
+            </div>
+        </div>
+
+        <div class="mt-8 text-center text-sm text-gray-500 dark:text-gray-400">
+            <p>Your user ID for this session (for internal use, not linked to reports): <span id="user-id-display">Loading...</span></p>
+            <p class="mt-2">
+                Disclaimer: This is a web application designed for anonymous reporting. It is not a native Android application.
+                All reports are anonymous and publicly visible within this application.
+            </p>
+        </div>
+    </div>
+
+    <!-- Firebase SDKs -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, addDoc, query, orderBy, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Global variables for Firebase instances
+        let db;
+        let auth;
+        let userId = null;
+        let isAuthReady = false; // Flag to ensure Firebase is initialized and authenticated
+
+        // DOM elements
+        const messageContainer = document.getElementById('message-container');
+        const reportForm = document.getElementById('report-form');
+        const reportTextInput = document.getElementById('reportText');
+        const locationTextInput = document.getElementById('locationText');
+        const submitButton = document.getElementById('submit-button');
+        const reportsList = document.getElementById('reports-list');
+        const noReportsMessage = document.getElementById('no-reports-message');
+        const userIdDisplay = document.getElementById('user-id-display');
+
+        /**
+         * Displays a message to the user.
+         * @param {string} msg - The message to display.
+         * @param {string} type - The type of message (e.g., 'info', 'error').
+         */
+        function displayMessage(msg, type = 'info') {
+            messageContainer.textContent = msg;
+            messageContainer.classList.remove('hidden', 'bg-blue-100', 'bg-red-100', 'text-blue-800', 'text-red-800', 'dark:bg-blue-900', 'dark:bg-red-900', 'dark:text-blue-200', 'dark:text-red-200');
+            if (type === 'error') {
+                messageContainer.classList.add('bg-red-100', 'text-red-800', 'dark:bg-red-900', 'dark:text-red-200');
+            } else {
+                messageContainer.classList.add('bg-blue-100', 'text-blue-800', 'dark:bg-blue-900', 'dark:text-blue-200');
+            }
+            messageContainer.classList.remove('hidden');
+        }
+
+        /**
+         * Hides the message container.
+         */
+        function hideMessage() {
+            messageContainer.classList.add('hidden');
+            messageContainer.textContent = '';
+        }
+
+        /**
+         * Initializes Firebase and sets up authentication.
+         */
+        async function initializeFirebase() {
+            try {
+                const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+                const app = initializeApp(firebaseConfig);
+                db = getFirestore(app);
+                auth = getAuth(app);
+
+                // Listen for authentication state changes
+                onAuthStateChanged(auth, async (user) => {
+                    if (user) {
+                        userId = user.uid;
+                        userIdDisplay.textContent = userId;
+                    } else {
+                        // Sign in anonymously if no user is authenticated
+                        try {
+                            if (typeof __initial_auth_token !== 'undefined') {
+                                await signInWithCustomToken(auth, __initial_auth_token);
+                            } else {
+                                await signInAnonymously(auth);
+                            }
+                            userId = auth.currentUser?.uid || 'anonymous'; // Get UID after sign-in
+                            userIdDisplay.textContent = userId;
+                        } catch (error) {
+                            console.error("Error signing in anonymously:", error);
+                            displayMessage("Error initializing app: Could not sign in.", 'error');
+                        }
+                    }
+                    isAuthReady = true; // Mark authentication as ready
+                    setupRealtimeReportsListener(); // Start listening for reports once auth is ready
+                });
+            } catch (error) {
+                console.error("Error initializing Firebase:", error);
+                displayMessage("Error initializing app: Firebase setup failed.", 'error');
+            }
+        }
+
+        /**
+         * Sets up a real-time listener for reports from Firestore.
+         */
+        function setupRealtimeReportsListener() {
+            if (!db || !isAuthReady) {
+                // If Firebase is not ready, defer setup
+                return;
+            }
+
+            const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+            const reportsCollectionRef = collection(db, `artifacts/${appId}/public/data/reports`);
+            const q = query(reportsCollectionRef, orderBy('timestamp', 'desc'));
+
+            onSnapshot(q, (snapshot) => {
+                reportsList.innerHTML = ''; // Clear existing reports
+                if (snapshot.empty) {
+                    noReportsMessage.textContent = "No reports yet. Be the first to submit one!";
+                    reportsList.appendChild(noReportsMessage);
+                } else {
+                    noReportsMessage.remove(); // Remove the "no reports" message if reports exist
+                    snapshot.docs.forEach(doc => {
+                        const report = doc.data();
+                        const reportElement = document.createElement('div');
+                        reportElement.className = "bg-gray-50 dark:bg-gray-700 p-4 rounded-lg shadow-sm border border-gray-200 dark:border-gray-600";
+                        reportElement.innerHTML = `
+                            <p class="text-gray-800 dark:text-gray-200 mb-2">
+                                <span class="font-semibold">Description:</span> ${report.description}
+                            </p>
+                            <p class="text-gray-600 dark:text-gray-400 text-sm">
+                                <span class="font-semibold">Location:</span> ${report.location}
+                            </p>
+                            <p class="text-gray-500 dark:text-gray-500 text-xs mt-1">
+                                ${report.timestamp ? new Date(report.timestamp.toDate()).toLocaleString() : 'Loading date...'}
+                            </p>
+                        `;
+                        reportsList.appendChild(reportElement);
+                    });
+                }
+            }, (error) => {
+                console.error("Error fetching reports:", error);
+                displayMessage("Error fetching reports.", 'error');
+            });
+        }
+
+        /**
+         * Handles the submission of a new report.
+         * @param {Event} e - The form submission event.
+         */
+        async function handleSubmitReport(e) {
+            e.preventDefault();
+            const reportText = reportTextInput.value.trim();
+            const locationText = locationTextInput.value.trim();
+
+            if (!reportText) {
+                displayMessage("Please enter a report description.", 'error');
+                return;
+            }
+            if (!db || !isAuthReady) {
+                displayMessage("App not ready. Please wait.", 'error');
+                return;
+            }
+
+            submitButton.disabled = true;
+            submitButton.textContent = 'Submitting...';
+            hideMessage();
+
+            try {
+                const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+                await addDoc(collection(db, `artifacts/${appId}/public/data/reports`), {
+                    description: reportText,
+                    location: locationText || 'Not specified',
+                    timestamp: serverTimestamp(),
+                    // userId is not stored with the report to maintain anonymity of the report content.
+                });
+                reportTextInput.value = '';
+                locationTextInput.value = '';
+                displayMessage("Report submitted anonymously!");
+            } catch (error) {
+                console.error("Error submitting report:", error);
+                displayMessage("Error submitting report. Please try again.", 'error');
+            } finally {
+                submitButton.disabled = false;
+                submitButton.textContent = 'Submit Anonymous Report';
+            }
+        }
+
+        // Add event listener for form submission
+        reportForm.addEventListener('submit', handleSubmitReport);
+
+        // Initialize Firebase when the window loads
+        window.onload = initializeFirebase;
+    </script>
+</body>
+</html>
